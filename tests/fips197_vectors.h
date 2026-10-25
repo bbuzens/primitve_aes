@@ -52,6 +52,14 @@ static const uint8_t FIPS_ROUND1_AFTER_SHIFT_ROWS[AES_ROWS][AES_COLUMNS] = {
     { 0x30, 0xae, 0xf1, 0xe5 },
 };
 
+/* État du tour 1 après MixColumns. */
+static const uint8_t FIPS_ROUND1_AFTER_MIX_COLUMNS[AES_ROWS][AES_COLUMNS] = {
+    { 0x04, 0xe0, 0x48, 0x28 },
+    { 0x66, 0xcb, 0xf8, 0x06 },
+    { 0x81, 0x19, 0xd3, 0x26 },
+    { 0xe5, 0x9a, 0x7a, 0x4c },
+};
+
 /*
  * S-box complète (FIPS-197 §5.1.1, figure 7).
  * Pour un octet {xy} : S({xy}) = FIPS_SBOX[x][y]  (x = ligne, y = colonne).

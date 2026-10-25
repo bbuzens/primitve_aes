@@ -32,4 +32,15 @@
 /* Constante c = {63} = 01100011 de la transformation affine de la S-box (FIPS-197 §5.1.1). */
 #define AES_SBOX_AFFINE_CONSTANT 0x63
 
+/*
+ * Matrice de MixColumns (FIPS-197 §5.1.3, équation 5.6).
+ * Chaque colonne de l'état est multipliée par cette matrice, dans GF(2^8).
+ */
+static const uint8_t AES_MIX_COLUMNS_MATRIX[AES_ROWS][AES_ROWS] = {
+    { 0x02, 0x03, 0x01, 0x01 },
+    { 0x01, 0x02, 0x03, 0x01 },
+    { 0x01, 0x01, 0x02, 0x03 },
+    { 0x03, 0x01, 0x01, 0x02 },
+};
+
 #endif
