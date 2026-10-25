@@ -14,7 +14,7 @@ Implémentation pédagogique de la primitive AES-128 en C, **calculée à la mai
 
 ```
 config/
-  aes_config.h            # constantes AES, polynôme m(x), constante affine, matrice MixColumns, convention de l'état
+  aes_config.h            # paramètres Nb/Nk/Nr, constantes AES, matrice MixColumns, convention de l'état
 src/
   entities/
     state.c/.h            # BytesToState / StateToBytes : conversion bloc <-> état
@@ -29,6 +29,12 @@ src/
     gf_multiply.c/.h      # multiplication quelconque dans GF(2^8)
     gf_inverse.c/.h       # inverse multiplicatif dans GF(2^8)
     affine_transform.c/.h # transformation affine de la S-box
+  key_schedule/
+    rot_word.c/.h         # RotWord : [a0,a1,a2,a3] -> [a1,a2,a3,a0]
+    sub_word.c/.h         # SubWord : SBox sur les 4 octets d'un mot
+    rcon.c/.h             # Rcon : constante de tour [x^(i-1), 00, 00, 00]
+    key_expansion.c/.h    # KeyExpansion : clé -> 44 mots w[0..43]
+    round_key.c/.h        # GetRoundKey : mots w[4r..4r+3] -> clé du tour r (état 4x4)
 tests/
   test_utils.c/.h         # check_true, check_byte, check_bytes, check_state, test_report
   fips197_vectors.h       # vecteurs de test de la FIPS-197 (annexe B, S-box de la figure 7)
@@ -42,16 +48,22 @@ tests/
   math/test_gf_multiply.c
   math/test_gf_inverse.c
   math/test_affine_transform.c
+  key_schedule/test_rot_word.c
+  key_schedule/test_sub_word.c
+  key_schedule/test_rcon.c
+  key_schedule/test_key_expansion.c
+  key_schedule/test_round_key.c
 Makefile
 ```
 
-- `config/` : la configuration, séparée des sources. Elle contient les dimensions de l'état et accueillera les paramètres `Nk` / `Nr` qui distinguent AES-128, 192 et 256.
+- `config/` : la configuration, séparée des sources. Elle contient les dimensions de l'état, les constantes de la norme et les paramètres `Nb` / `Nk` / `Nr` (fixés pour AES-128).
 - `src/entities/` : les structures de données manipulées et leurs conversions.
 - `src/operations/` : les transformations AES.
 - `src/math/` : l'arithmétique du corps GF(2⁸), sur laquelle s'appuient les transformations.
+- `src/key_schedule/` : l'expansion de la clé et l'extraction des clés de tour. Un mot y est un tableau de 4 octets (`uint8_t word[4]`), pour rester octet par octet comme le reste du code.
 - `tests/` reprend la même arborescence que `src/` ; les outils de test partagés restent à sa racine.
 
-Les en-têtes s'incluent par leur nom seul (`#include "state.h"`) : le Makefile passe `-Iconfig -Isrc/entities -Isrc/operations -Isrc/math -Itests` au compilateur.
+Les en-têtes s'incluent par leur nom seul (`#include "state.h"`) : le Makefile passe `-Iconfig -Isrc/entities -Isrc/operations -Isrc/math -Isrc/key_schedule -Itests` au compilateur.
 
 ## Convention de l'état
 
@@ -119,8 +131,10 @@ Les noms de tests doivent rester uniques dans tout `tests/` : `tests/<dossier>/t
 | 8 | `SubBytes` | FIPS-197 annexe B (tour 1 après SubBytes) | ✅ |
 | 9 | `ShiftRows` | FIPS-197 §5.1.2, annexe B (tour 1 après ShiftRows) | ✅ |
 | 10 | `MixColumns` | FIPS-197 §5.1.3, annexe B (tour 1 après MixColumns) | ✅ |
-| 11 | `KeyExpansion` | FIPS-197 annexe A.1 | ⏳ |
-| 12 | `Cipher` (assemblage) | FIPS-197 annexe B : `39 25 84 1d 02 dc 09 fb dc 11 85 97 19 6a 0b 32` | ⏳ |
+| 11 | `RotWord`, `SubWord`, `Rcon` | FIPS-197 §5.2, annexe A.1 (i = 4 et i = 8) | ✅ |
+| 12 | `KeyExpansion` | FIPS-197 annexe A.1 (44 mots) | ✅ |
+| 13 | `GetRoundKey` | FIPS-197 annexe B (clés des tours 0, 1 et 10) | ✅ |
+| 14 | `Cipher` (assemblage) | FIPS-197 annexe B : `39 25 84 1d 02 dc 09 fb dc 11 85 97 19 6a 0b 32` | ⏳ |
 
 ## Limites connues
 
@@ -135,7 +149,7 @@ Certaines fonctions prennent des branches qui dépendent des valeurs manipulées
 |---|---|
 | [`xtime`](src/math/xtime.c) | `if (overflows)` : la réduction par `0x1b` n'a lieu que si le bit x⁷ est à 1. |
 | [`gf_multiply`](src/math/gf_multiply.c) | `if (bit_is_set)` : l'ajout de `a · xⁱ` n'a lieu que si le bit `i` de `b` est à 1. |
-| [`gf_inverse`](src/math/gf_inverse.c), [`SBox`](src/operations/sbox.c), [`SubBytes`](src/operations/sub_bytes.c), [`MixColumns`](src/operations/mix_columns.c) | Aucune branche propre (boucles de longueur fixe), mais héritent de celles de `gf_multiply` et `xtime`. |
+| [`gf_inverse`](src/math/gf_inverse.c), [`SBox`](src/operations/sbox.c), [`SubBytes`](src/operations/sub_bytes.c), [`MixColumns`](src/operations/mix_columns.c), [`SubWord`](src/key_schedule/sub_word.c), [`KeyExpansion`](src/key_schedule/key_expansion.c) | Aucune branche propre dépendant des données (le test `i % Nk == 0` de `KeyExpansion` ne dépend que de la position) (boucles de longueur fixe), mais héritent de celles de `gf_multiply` et `xtime`. |
 
 En AES, ces valeurs dépendent de la clé. Le temps d'exécution peut donc varier selon la clé et laisser fuir de l'information exploitable par une attaque temporelle.
 
@@ -162,6 +176,11 @@ Les opérations à venir seront ajoutées à ce tableau si elles introduisent de
 
 Lisibilité d'abord : `gf_inverse` calcule a²⁵⁴ par 253 multiplications successives, recalculées pour chaque octet de chaque tour.
 C'est très lent comparé à une table précalculée ou à une exponentiation rapide, mais sans conséquence pour des tests unitaires.
+
+### AES-128 uniquement
+
+`Nk` et `Nr` sont fixés pour AES-128 dans [config/aes_config.h](config/aes_config.h).
+Changer ces valeurs ne suffit pas pour AES-256 : `KeyExpansion` devrait aussi appliquer `SubWord` quand `Nk > 6` et `i mod Nk = 4` (FIPS-197 §5.2), étape non implémentée et non testée.
 
 ## Vecteurs utilisés (FIPS-197, annexe B)
 
