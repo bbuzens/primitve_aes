@@ -22,14 +22,14 @@ src/
     add_round_key.c/.h    # AddRoundKey
   math/
     xtime.c/.h            # multiplication par x ({02}) dans GF(2^8)
-    gmul.c/.h             # multiplication quelconque dans GF(2^8)
+    gf_multiply.c/.h      # multiplication quelconque dans GF(2^8)
 tests/
   test_utils.c/.h         # check_true, check_byte, check_bytes, check_state, test_report
   fips197_vectors.h       # vecteurs de test de la FIPS-197, annexe B
   entities/test_state.c
   operations/test_add_round_key.c
   math/test_xtime.c
-  math/test_gmul.c
+  math/test_gf_multiply.c
 Makefile
 ```
 
@@ -89,7 +89,7 @@ En cas d'échec, `check_state` affiche les grilles attendue et obtenue côte à 
 
 Le Makefile découvre seul les fichiers `tests/<dossier>/test_*.c` : aucune liste à tenir à jour. Seul un **nouveau dossier** doit être ajouté à `SRC_DIRS`.
 
-Toutes les sources sont liées à chaque exécutable de test : une unité peut en utiliser une autre (`gmul` utilise `xtime`) sans déclarer de dépendance. Chaque test ne teste pourtant qu'une seule unité.
+Toutes les sources sont liées à chaque exécutable de test : une unité peut en utiliser une autre (`gf_multiply` utilise `xtime`) sans déclarer de dépendance. Chaque test ne teste pourtant qu'une seule unité.
 
 Les noms de tests doivent rester uniques dans tout `tests/` : `tests/<dossier>/test_<nom>.c` produit `build/test_<nom>`.
 
@@ -100,7 +100,7 @@ Les noms de tests doivent rester uniques dans tout `tests/` : `tests/<dossier>/t
 | 1 | `BytesToState` / `StateToBytes` | FIPS-197 §3.4, annexe B | ✅ |
 | 2 | `AddRoundKey` | FIPS-197 annexe B (début du tour 1) | ✅ |
 | 3 | `xtime` : multiplication par x dans GF(2⁸) | FIPS-197 §4.2.1 : `{57}·{02} = {ae}`… | ✅ |
-| 4 | `gmul` : multiplication dans GF(2⁸) | FIPS-197 §4.2 : `{57}·{83} = {c1}`, `{57}·{13} = {fe}` | ✅ |
+| 4 | `gf_multiply` : multiplication dans GF(2⁸) | FIPS-197 §4.2 : `{57}·{83} = {c1}`, `{57}·{13} = {fe}` | ✅ |
 | 5 | `SubBytes` (S-box calculée : inverse dans GF(2⁸) + transformation affine) | FIPS-197 §5.1.1, annexe B | ⏳ |
 | 6 | `ShiftRows` | FIPS-197 §5.1.2, annexe B | ⏳ |
 | 7 | `MixColumns` | FIPS-197 §5.1.3, annexe B | ⏳ |
@@ -119,7 +119,7 @@ Certaines fonctions prennent des branches qui dépendent des valeurs manipulées
 | Fonction | Branche dépendante des données |
 |---|---|
 | [`xtime`](src/math/xtime.c) | `if (overflows)` : la réduction par `0x1b` n'a lieu que si le bit x⁷ est à 1. |
-| [`gmul`](src/math/gmul.c) | `if (bit_is_set)` : l'ajout de `a · xⁱ` n'a lieu que si le bit `i` de `b` est à 1. |
+| [`gf_multiply`](src/math/gf_multiply.c) | `if (bit_is_set)` : l'ajout de `a · xⁱ` n'a lieu que si le bit `i` de `b` est à 1. |
 
 En AES, ces valeurs dépendent de la clé. Le temps d'exécution peut donc varier selon la clé et laisser fuir de l'information exploitable par une attaque temporelle.
 
@@ -130,7 +130,7 @@ Pour la phase de durcissement, chaque branche se remplace par un masque, sans ch
 /* xtime : masque = 0xff si le bit x^7 est à 1, 0x00 sinon */
 shifted ^= AES_REDUCTION_POLYNOMIAL & -(uint8_t)(byte >> 7);
 
-/* gmul : masque = 0xff si le bit est à 1, 0x00 sinon */
+/* gf_multiply : masque = 0xff si le bit est à 1, 0x00 sinon */
 product ^= a_times_x_power & -(uint8_t)bit_is_set;
 ```
 

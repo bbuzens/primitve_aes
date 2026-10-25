@@ -12,7 +12,7 @@ TEST_DIRS  = $(patsubst src/%, $(TEST_DIR)/%, $(SRC_DIRS))
 CPPFLAGS = $(addprefix -I, $(CONFIG_DIR) $(SRC_DIRS) $(TEST_DIR))
 
 # Toutes les sources sont liées à chaque test : une unité peut donc en utiliser
-# une autre (gmul utilise xtime) sans déclarer la dépendance.
+# une autre (gf_multiply utilise xtime) sans déclarer la dépendance.
 # Chaque test ne teste pourtant qu'une seule unité.
 SRC        = $(wildcard $(addsuffix /*.c, $(SRC_DIRS)))
 TEST_UTILS = $(TEST_DIR)/test_utils.c

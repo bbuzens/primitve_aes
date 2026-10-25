@@ -1,9 +1,9 @@
 #include <stdbool.h>
 
-#include "gmul.h"
+#include "gf_multiply.h"
 #include "xtime.h"
 
-uint8_t gmul(uint8_t a, uint8_t b)
+uint8_t gf_multiply(uint8_t a, uint8_t b)
 {
     uint8_t product = 0;
     uint8_t a_times_x_power = a; /* a . x^i, en commençant par i = 0 */
