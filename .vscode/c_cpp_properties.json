@@ -5,6 +5,7 @@
             "compilerPath": "/usr/bin/gcc",
             "cStandard": "c23",
             "includePath": [
+                "${workspaceFolder}/include",
                 "${workspaceFolder}/config",
                 "${workspaceFolder}/src/**",
                 "${workspaceFolder}/tests"

@@ -13,6 +13,8 @@ Implémentation pédagogique de la primitive AES-128 en C, **calculée à la mai
 ## Organisation
 
 ```
+include/
+  aes.h                   # interface publique : tailles, KeyExpansion, Cipher
 config/
   aes_config.h            # paramètres Nb/Nk/Nr, constantes AES, matrice MixColumns, convention de l'état
 src/
@@ -56,10 +58,12 @@ tests/
   key_schedule/test_key_expansion.c
   key_schedule/test_round_key.c
   cipher/test_cipher.c
+  public_api/test_public_api.c  # programme utilisateur : aes.h + libaes.a uniquement
 Makefile
 ```
 
-- `config/` : la configuration, séparée des sources. Elle contient les dimensions de l'état, les constantes de la norme et les paramètres `Nb` / `Nk` / `Nr` (fixés pour AES-128).
+- `include/` : l'interface publique, seul en-tête nécessaire à un programme qui utilise la bibliothèque.
+- `config/` : la configuration, séparée des sources. Elle contient les dimensions de l'état, les constantes de la norme et les paramètres `Nb` / `Nk` / `Nr` (fixés pour AES-128). Elle inclut `aes.h`, qui définit les tailles publiques une seule fois ; des `static_assert` vérifient à la compilation qu'elles concordent avec `Nb` / `Nk` / `Nr`.
 - `src/entities/` : les structures de données manipulées et leurs conversions.
 - `src/operations/` : les transformations AES.
 - `src/math/` : l'arithmétique du corps GF(2⁸), sur laquelle s'appuient les transformations.
@@ -67,7 +71,7 @@ Makefile
 - `src/key_schedule/` : l'expansion de la clé et l'extraction des clés de tour. Un mot y est un tableau de 4 octets (`uint8_t word[4]`), pour rester octet par octet comme le reste du code.
 - `tests/` reprend la même arborescence que `src/` ; les outils de test partagés restent à sa racine.
 
-Les en-têtes s'incluent par leur nom seul (`#include "state.h"`) : le Makefile passe `-Iconfig -Isrc/entities -Isrc/operations -Isrc/math -Isrc/key_schedule -Isrc/cipher -Itests` au compilateur.
+Les en-têtes s'incluent par leur nom seul (`#include "state.h"`) : le Makefile passe `-Iinclude -Iconfig -Isrc/entities -Isrc/operations -Isrc/math -Isrc/key_schedule -Isrc/cipher -Itests` au compilateur.
 
 ## Convention de l'état
 
@@ -96,7 +100,8 @@ L'IDE (extension C/C++ de VS Code) ne lit pas le Makefile : [.vscode/c_cpp_prope
 À tenir à jour si un dossier est ajouté à `SRC_DIRS` hors de `src/`.
 
 ```bash
-make test    # compile chaque build/test_<op> et les exécute tous
+make test    # compile chaque build/test_<op> et le test de l'API publique, et les exécute tous
+make lib     # produit la bibliothèque statique build/libaes.a
 make clean   # supprime le dossier build/
 ```
 
@@ -184,13 +189,15 @@ C'est très lent comparé à une table précalculée ou à une exponentiation ra
 ### AES-128 uniquement
 
 `Nk` et `Nr` sont fixés pour AES-128 dans [config/aes_config.h](config/aes_config.h).
-Changer ces valeurs ne suffit pas pour AES-256 : `KeyExpansion` devrait aussi appliquer `SubWord` quand `Nk > 6` et `i mod Nk = 4` (FIPS-197 §5.2), étape non implémentée et non testée.
+Changer ces valeurs ne suffit pas pour AES-256 : il faut aussi adapter les tailles de [include/aes.h](include/aes.h) (les `static_assert` le signalent), et `KeyExpansion` devrait appliquer `SubWord` quand `Nk > 6` et `i mod Nk = 4` (FIPS-197 §5.2), étape non implémentée et non testée.
 
-## Utilisation
+## Utilisation comme bibliothèque
+
+Bibliothèque à usage personnel et pédagogique : `make lib` produit `build/libaes.a`, et un programme n'a besoin que de [include/aes.h](include/aes.h).
 
 ```c
-#include "cipher.h"
-#include "key_expansion.h"
+/* mon_programme.c */
+#include "aes.h"
 
 uint8_t w[AES_EXPANDED_KEY_WORDS][AES_WORD_SIZE];
 uint8_t ciphertext[AES_BLOCK_SIZE];
@@ -198,6 +205,21 @@ uint8_t ciphertext[AES_BLOCK_SIZE];
 KeyExpansion(key, w);              /* une fois par clé */
 Cipher(plaintext, ciphertext, w);  /* un bloc de 16 octets */
 ```
+
+```bash
+make lib
+cc -std=c23 -I<projet>/include mon_programme.c -L<projet>/build -laes -o mon_programme
+```
+
+- `-I<projet>/include` : le compilateur trouve `aes.h` (les déclarations).
+- `-L<projet>/build -laes` : l'éditeur de liens prend dans `libaes.a` le code de `Cipher`, `KeyExpansion` et de tout ce qu'elles appellent. L'exécutable produit est autonome.
+
+[tests/public_api/test_public_api.c](tests/public_api/test_public_api.c) est un programme de ce type : il est compilé exactement ainsi par `make test`, ce qui garantit que `aes.h` se suffit à lui-même.
+
+**Noms FIPS conservés** : `aes.h` expose `KeyExpansion` et `Cipher` sous leurs noms de la norme, sans préfixe.
+Les fonctions internes (`SubBytes`, `xtime`, `Rcon`…) n'y sont pas déclarées, mais leurs symboles sont présents dans `libaes.a` : un programme utilisateur ne doit pas définir de fonctions portant les mêmes noms, sous peine de conflit à l'édition de liens.
+
+`aes.h` et les en-têtes internes [cipher.h](src/cipher/cipher.h) / [key_expansion.h](src/key_schedule/key_expansion.h) déclarent les mêmes fonctions : comme les seconds incluent le premier, le compilateur vérifie que les deux déclarations sont identiques.
 
 `Cipher` chiffre **un seul bloc** : c'est la primitive AES, pas un mode de chiffrement (ECB, CBC, GCM…).
 Le déchiffrement (`InvCipher`, FIPS-197 §5.3) n'est pas implémenté.

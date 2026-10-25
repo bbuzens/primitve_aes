@@ -4,6 +4,13 @@
 #include <stdint.h>
 
 /*
+ * Les tailles publiques (AES_BLOCK_SIZE, AES_KEY_SIZE, AES_WORD_SIZE, AES_EXPANDED_KEY_WORDS)
+ * sont définies une seule fois, dans l'interface publique. Les static_assert ci-dessous
+ * vérifient à la compilation qu'elles concordent avec les paramètres de la norme.
+ */
+#include "aes.h"
+
+/*
  * L'état AES est une matrice de 4 lignes x 4 colonnes d'octets,
  * indexée state[ligne][colonne], comme s[r][c] dans la FIPS-197 (§3.4).
  *
@@ -19,7 +26,9 @@
 
 #define AES_ROWS       4
 #define AES_COLUMNS    4
-#define AES_BLOCK_SIZE (AES_ROWS * AES_COLUMNS)
+
+static_assert(AES_ROWS * AES_COLUMNS == AES_BLOCK_SIZE, "AES_ROWS x AES_COLUMNS doit valoir AES_BLOCK_SIZE (aes.h)");
+static_assert(AES_ROWS == AES_WORD_SIZE, "AES_ROWS doit valoir AES_WORD_SIZE (aes.h) : une colonne = un mot");
 
 /*
  * Paramètres de la norme (FIPS-197 §5, figure 4), pour AES-128 :
@@ -27,13 +36,12 @@
  *   Nk : nombre de mots de la clé : 4 (AES-128), 6 (AES-192), 8 (AES-256) ;
  *   Nr : nombre de tours         : 10 (AES-128), 12 (AES-192), 14 (AES-256).
  */
-#define AES_WORD_SIZE 4
 #define AES_NB        AES_COLUMNS
 #define AES_NK        4
 #define AES_NR        10
 
-#define AES_KEY_SIZE           (AES_WORD_SIZE * AES_NK)  /* 16 octets */
-#define AES_EXPANDED_KEY_WORDS (AES_NB * (AES_NR + 1))   /* 44 mots : une clé par tour, plus la clé initiale */
+static_assert(AES_WORD_SIZE * AES_NK == AES_KEY_SIZE, "AES_WORD_SIZE x AES_NK doit valoir AES_KEY_SIZE (aes.h)");
+static_assert(AES_NB * (AES_NR + 1) == AES_EXPANDED_KEY_WORDS, "AES_NB x (AES_NR + 1) doit valoir AES_EXPANDED_KEY_WORDS (aes.h)");
 
 /*
  * Polynôme irréductible de GF(2^8) choisi par AES (FIPS-197 §4.2) :
