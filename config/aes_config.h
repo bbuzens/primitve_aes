@@ -29,4 +29,7 @@
  */
 #define AES_REDUCTION_POLYNOMIAL 0x1b
 
+/* Constante c = {63} = 01100011 de la transformation affine de la S-box (FIPS-197 §5.1.1). */
+#define AES_SBOX_AFFINE_CONSTANT 0x63
+
 #endif

@@ -14,22 +14,30 @@ Implémentation pédagogique de la primitive AES-128 en C, **calculée à la mai
 
 ```
 config/
-  aes_config.h            # constantes AES, polynôme m(x), convention de l'état
+  aes_config.h            # constantes AES, polynôme m(x), constante affine, convention de l'état
 src/
   entities/
     state.c/.h            # BytesToState / StateToBytes : conversion bloc <-> état
   operations/
     add_round_key.c/.h    # AddRoundKey
+    sbox.c/.h             # SBox : S(b) = affine(b^-1), pour un octet
+    sub_bytes.c/.h        # SubBytes : SBox appliquée à tout l'état
   math/
     xtime.c/.h            # multiplication par x ({02}) dans GF(2^8)
     gf_multiply.c/.h      # multiplication quelconque dans GF(2^8)
+    gf_inverse.c/.h       # inverse multiplicatif dans GF(2^8)
+    affine_transform.c/.h # transformation affine de la S-box
 tests/
   test_utils.c/.h         # check_true, check_byte, check_bytes, check_state, test_report
-  fips197_vectors.h       # vecteurs de test de la FIPS-197, annexe B
+  fips197_vectors.h       # vecteurs de test de la FIPS-197 (annexe B, S-box de la figure 7)
   entities/test_state.c
   operations/test_add_round_key.c
+  operations/test_sbox.c
+  operations/test_sub_bytes.c
   math/test_xtime.c
   math/test_gf_multiply.c
+  math/test_gf_inverse.c
+  math/test_affine_transform.c
 Makefile
 ```
 
@@ -101,11 +109,14 @@ Les noms de tests doivent rester uniques dans tout `tests/` : `tests/<dossier>/t
 | 2 | `AddRoundKey` | FIPS-197 annexe B (début du tour 1) | ✅ |
 | 3 | `xtime` : multiplication par x dans GF(2⁸) | FIPS-197 §4.2.1 : `{57}·{02} = {ae}`… | ✅ |
 | 4 | `gf_multiply` : multiplication dans GF(2⁸) | FIPS-197 §4.2 : `{57}·{83} = {c1}`, `{57}·{13} = {fe}` | ✅ |
-| 5 | `SubBytes` (S-box calculée : inverse dans GF(2⁸) + transformation affine) | FIPS-197 §5.1.1, annexe B | ⏳ |
-| 6 | `ShiftRows` | FIPS-197 §5.1.2, annexe B | ⏳ |
-| 7 | `MixColumns` | FIPS-197 §5.1.3, annexe B | ⏳ |
-| 8 | `KeyExpansion` | FIPS-197 annexe A.1 | ⏳ |
-| 9 | `Cipher` (assemblage) | FIPS-197 annexe B : `39 25 84 1d 02 dc 09 fb dc 11 85 97 19 6a 0b 32` | ⏳ |
+| 5 | `gf_inverse` : inverse dans GF(2⁸), calculé comme a²⁵⁴ | FIPS-197 §4.2 : `{53}⁻¹ = {ca}` | ✅ |
+| 6 | `affine_transform` : transformation affine | FIPS-197 §5.1.1, équation 5.1 | ✅ |
+| 7 | `SBox` : S(b) = affine(b⁻¹) | FIPS-197 §5.1.1 : `S({53}) = {ed}`, table complète de la figure 7 | ✅ |
+| 8 | `SubBytes` | FIPS-197 annexe B (tour 1 après SubBytes) | ✅ |
+| 9 | `ShiftRows` | FIPS-197 §5.1.2, annexe B | ⏳ |
+| 10 | `MixColumns` | FIPS-197 §5.1.3, annexe B | ⏳ |
+| 11 | `KeyExpansion` | FIPS-197 annexe A.1 | ⏳ |
+| 12 | `Cipher` (assemblage) | FIPS-197 annexe B : `39 25 84 1d 02 dc 09 fb dc 11 85 97 19 6a 0b 32` | ⏳ |
 
 ## Limites connues
 
@@ -120,6 +131,7 @@ Certaines fonctions prennent des branches qui dépendent des valeurs manipulées
 |---|---|
 | [`xtime`](src/math/xtime.c) | `if (overflows)` : la réduction par `0x1b` n'a lieu que si le bit x⁷ est à 1. |
 | [`gf_multiply`](src/math/gf_multiply.c) | `if (bit_is_set)` : l'ajout de `a · xⁱ` n'a lieu que si le bit `i` de `b` est à 1. |
+| [`gf_inverse`](src/math/gf_inverse.c), [`SBox`](src/operations/sbox.c), [`SubBytes`](src/operations/sub_bytes.c) | Aucune branche propre (boucles de longueur fixe), mais héritent de celles de `gf_multiply` et `xtime`. |
 
 En AES, ces valeurs dépendent de la clé. Le temps d'exécution peut donc varier selon la clé et laisser fuir de l'information exploitable par une attaque temporelle.
 
@@ -137,7 +149,15 @@ product ^= a_times_x_power & -(uint8_t)bit_is_set;
 Les tests unitaires existants permettront de vérifier que la version durcie donne les mêmes résultats.
 Il faudra aussi vérifier le code machine produit : un compilateur peut réintroduire une branche.
 
-Les opérations à venir seront ajoutées à ce tableau si elles introduisent de nouvelles dépendances aux données (par exemple une S-box sous forme de table, dont les accès mémoire dépendent de l'octet lu).
+La S-box est **calculée** et non lue dans une table : il n'y a donc pas d'accès mémoire dont l'adresse dépend de l'octet substitué, source classique d'attaques par cache sur AES.
+Une fois `gf_multiply` et `xtime` durcis, toute la chaîne `SubBytes` sera sans branche dépendante des données.
+
+Les opérations à venir seront ajoutées à ce tableau si elles introduisent de nouvelles dépendances aux données.
+
+### Performance
+
+Lisibilité d'abord : `gf_inverse` calcule a²⁵⁴ par 253 multiplications successives, recalculées pour chaque octet de chaque tour.
+C'est très lent comparé à une table précalculée ou à une exponentiation rapide, mais sans conséquence pour des tests unitaires.
 
 ## Vecteurs utilisés (FIPS-197, annexe B)
 
