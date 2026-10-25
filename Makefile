@@ -5,7 +5,7 @@ BUILD   = build
 
 # Configuration (constantes AES) séparée des sources.
 CONFIG_DIR = config
-SRC_DIRS   = src/entities src/operations src/math src/key_schedule
+SRC_DIRS   = src/entities src/operations src/math src/key_schedule src/cipher
 TEST_DIR   = tests
 TEST_DIRS  = $(patsubst src/%, $(TEST_DIR)/%, $(SRC_DIRS))
 

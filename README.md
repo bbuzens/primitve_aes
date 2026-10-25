@@ -35,6 +35,8 @@ src/
     rcon.c/.h             # Rcon : constante de tour [x^(i-1), 00, 00, 00]
     key_expansion.c/.h    # KeyExpansion : clé -> 44 mots w[0..43]
     round_key.c/.h        # GetRoundKey : mots w[4r..4r+3] -> clé du tour r (état 4x4)
+  cipher/
+    cipher.c/.h           # Cipher : assemblage des tours, chiffrement d'un bloc
 tests/
   test_utils.c/.h         # check_true, check_byte, check_bytes, check_state, test_report
   fips197_vectors.h       # vecteurs de test de la FIPS-197 (annexe B, S-box de la figure 7)
@@ -53,6 +55,7 @@ tests/
   key_schedule/test_rcon.c
   key_schedule/test_key_expansion.c
   key_schedule/test_round_key.c
+  cipher/test_cipher.c
 Makefile
 ```
 
@@ -60,10 +63,11 @@ Makefile
 - `src/entities/` : les structures de données manipulées et leurs conversions.
 - `src/operations/` : les transformations AES.
 - `src/math/` : l'arithmétique du corps GF(2⁸), sur laquelle s'appuient les transformations.
+- `src/cipher/` : l'assemblage final, qui enchaîne toutes les unités.
 - `src/key_schedule/` : l'expansion de la clé et l'extraction des clés de tour. Un mot y est un tableau de 4 octets (`uint8_t word[4]`), pour rester octet par octet comme le reste du code.
 - `tests/` reprend la même arborescence que `src/` ; les outils de test partagés restent à sa racine.
 
-Les en-têtes s'incluent par leur nom seul (`#include "state.h"`) : le Makefile passe `-Iconfig -Isrc/entities -Isrc/operations -Isrc/math -Isrc/key_schedule -Itests` au compilateur.
+Les en-têtes s'incluent par leur nom seul (`#include "state.h"`) : le Makefile passe `-Iconfig -Isrc/entities -Isrc/operations -Isrc/math -Isrc/key_schedule -Isrc/cipher -Itests` au compilateur.
 
 ## Convention de l'état
 
@@ -134,7 +138,7 @@ Les noms de tests doivent rester uniques dans tout `tests/` : `tests/<dossier>/t
 | 11 | `RotWord`, `SubWord`, `Rcon` | FIPS-197 §5.2, annexe A.1 (i = 4 et i = 8) | ✅ |
 | 12 | `KeyExpansion` | FIPS-197 annexe A.1 (44 mots) | ✅ |
 | 13 | `GetRoundKey` | FIPS-197 annexe B (clés des tours 0, 1 et 10) | ✅ |
-| 14 | `Cipher` (assemblage) | FIPS-197 annexe B : `39 25 84 1d 02 dc 09 fb dc 11 85 97 19 6a 0b 32` | ⏳ |
+| 14 | `Cipher` (assemblage) | FIPS-197 annexes B et C.1, clé et clair nuls, 200 vecteurs aléatoires contre OpenSSL | ✅ |
 
 ## Limites connues
 
@@ -182,13 +186,31 @@ C'est très lent comparé à une table précalculée ou à une exponentiation ra
 `Nk` et `Nr` sont fixés pour AES-128 dans [config/aes_config.h](config/aes_config.h).
 Changer ces valeurs ne suffit pas pour AES-256 : `KeyExpansion` devrait aussi appliquer `SubWord` quand `Nk > 6` et `i mod Nk = 4` (FIPS-197 §5.2), étape non implémentée et non testée.
 
-## Vecteurs utilisés (FIPS-197, annexe B)
+## Utilisation
 
-| | Valeur |
-|---|---|
-| Clair | `32 43 f6 a8 88 5a 30 8d 31 31 98 a2 e0 37 07 34` |
-| Clé | `2b 7e 15 16 28 ae d2 a6 ab f7 15 88 09 cf 4f 3c` |
-| Chiffré attendu | `39 25 84 1d 02 dc 09 fb dc 11 85 97 19 6a 0b 32` |
+```c
+#include "cipher.h"
+#include "key_expansion.h"
+
+uint8_t w[AES_EXPANDED_KEY_WORDS][AES_WORD_SIZE];
+uint8_t ciphertext[AES_BLOCK_SIZE];
+
+KeyExpansion(key, w);              /* une fois par clé */
+Cipher(plaintext, ciphertext, w);  /* un bloc de 16 octets */
+```
+
+`Cipher` chiffre **un seul bloc** : c'est la primitive AES, pas un mode de chiffrement (ECB, CBC, GCM…).
+Le déchiffrement (`InvCipher`, FIPS-197 §5.3) n'est pas implémenté.
+
+## Vecteurs utilisés
+
+| | Clé | Clair | Chiffré attendu |
+|---|---|---|---|
+| FIPS-197 annexe B | `2b7e1516 28aed2a6 abf71588 09cf4f3c` | `3243f6a8 885a308d 313198a2 e0370734` | `3925841d 02dc09fb dc118597 196a0b32` |
+| FIPS-197 annexe C.1 | `00010203 04050607 08090a0b 0c0d0e0f` | `00112233 44556677 8899aabb ccddeeff` | `69c4e0d8 6a7b0430 d8cdb780 70b4c55a` |
+| Clé et clair nuls | `00000000 …` | `00000000 …` | `66e94bd4 ef8a2c3b 884cfa59 ca342b2e` |
+
+L'annexe B sert de fil rouge : chaque transformation est testée sur les états intermédiaires de son premier tour.
 
 Vérification indépendante d'un bloc avec OpenSSL (oracle de test uniquement, non utilisé par le code) :
 
@@ -196,3 +218,5 @@ Vérification indépendante d'un bloc avec OpenSSL (oracle de test uniquement, n
 echo -n "3243f6a8885a308d313198a2e0370734" | xxd -r -p | \
   openssl enc -aes-128-ecb -nopad -K 2b7e151628aed2a6abf7158809cf4f3c | xxd -p
 ```
+
+L'implémentation a aussi été comparée à OpenSSL sur 200 couples clé/clair aléatoires, sans aucun écart.
