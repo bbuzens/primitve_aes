@@ -1,6 +1,7 @@
 #ifndef AES_CONFIG_H
 #define AES_CONFIG_H
 
+#include <assert.h> /* static_assert : mot-clé en C23, macro de <assert.h> en C11/C17 */
 #include <stdint.h>
 
 /*

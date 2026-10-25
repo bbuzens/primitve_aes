@@ -95,6 +95,26 @@ Le C23 permet de passer un tableau `uint8_t [4][4]` à un paramètre `const uint
 
 En C23, `bool`, `true` et `false` sont des mots-clés : `<stdbool.h>` n'est plus nécessaire.
 Le code l'inclut quand même, pour rester familier aux habitués du C99/C17, où ces noms sont des macros définies par cet en-tête.
+Pour la même raison, [config/aes_config.h](config/aes_config.h) inclut `<assert.h>`, qui définit `static_assert` avant C23.
+
+### Compatibilité avec les normes antérieures
+
+Le C23 reste la norme de référence du projet, mais le code compile aussi avec les normes précédentes :
+
+| Norme | Résultat |
+|---|---|
+| C23 (`-std=c23`) | ✅ compile sans avertissement |
+| C17 / C11 (`-std=c17`, `-std=c11`) | ✅ compile et tous les tests passent ; avertissements avec `-Wpedantic` (22 emplacements, dans `cipher.c` et les tests) |
+| C99 et antérieures | ❌ `static_assert` n'existe pas |
+
+Pour vérifier avec une autre norme :
+
+```bash
+make clean && make test CFLAGS="-std=c17 -Wall -Wextra -Wpedantic -O2 -g"
+```
+
+Les avertissements C11/C17 (`invalid use of pointers to arrays with different qualifiers`) viennent des paramètres `const uint8_t [4][4]` : avant C23, la norme ne permet pas formellement d'y passer un `uint8_t [4][4]` non `const`.
+Le code généré et le comportement sont identiques. Les supprimer demanderait de retirer ces `const` ou d'ajouter des conversions à chaque appel, au détriment de la lisibilité : ils sont donc conservés.
 
 L'IDE (extension C/C++ de VS Code) ne lit pas le Makefile : [.vscode/c_cpp_properties.json](.vscode/c_cpp_properties.json) lui indique la même norme (`c23`) et les mêmes chemins d'inclusion que le compilateur.
 À tenir à jour si un dossier est ajouté à `SRC_DIRS` hors de `src/`.
