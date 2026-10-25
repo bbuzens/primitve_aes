@@ -61,6 +61,12 @@ Les vecteurs de test de [tests/fips197_vectors.h](tests/fips197_vectors.h) sont 
 Prérequis : un compilateur C23 (GCC ≥ 14 ou Clang ≥ 18) et `make`.
 Le C23 permet de passer un tableau `uint8_t [4][4]` à un paramètre `const uint8_t [4][4]` sans avertissement.
 
+En C23, `bool`, `true` et `false` sont des mots-clés : `<stdbool.h>` n'est plus nécessaire.
+Le code l'inclut quand même, pour rester familier aux habitués du C99/C17, où ces noms sont des macros définies par cet en-tête.
+
+L'IDE (extension C/C++ de VS Code) ne lit pas le Makefile : [.vscode/c_cpp_properties.json](.vscode/c_cpp_properties.json) lui indique la même norme (`c23`) et les mêmes chemins d'inclusion que le compilateur.
+À tenir à jour si un dossier est ajouté à `SRC_DIRS` hors de `src/`.
+
 ```bash
 make test    # compile chaque build/test_<op> et les exécute tous
 make clean   # supprime le dossier build/
@@ -100,6 +106,38 @@ Les noms de tests doivent rester uniques dans tout `tests/` : `tests/<dossier>/t
 | 7 | `MixColumns` | FIPS-197 §5.1.3, annexe B | ⏳ |
 | 8 | `KeyExpansion` | FIPS-197 annexe A.1 | ⏳ |
 | 9 | `Cipher` (assemblage) | FIPS-197 annexe B : `39 25 84 1d 02 dc 09 fb dc 11 85 97 19 6a 0b 32` | ⏳ |
+
+## Limites connues
+
+> [!WARNING]
+> **Implémentation pédagogique, non durcie : ne pas l'utiliser pour protéger de vraies données.**
+
+### Exécution non constante dans le temps (canal auxiliaire temporel)
+
+Certaines fonctions prennent des branches qui dépendent des valeurs manipulées :
+
+| Fonction | Branche dépendante des données |
+|---|---|
+| [`xtime`](src/math/xtime.c) | `if (overflows)` : la réduction par `0x1b` n'a lieu que si le bit x⁷ est à 1. |
+| [`gmul`](src/math/gmul.c) | `if (bit_is_set)` : l'ajout de `a · xⁱ` n'a lieu que si le bit `i` de `b` est à 1. |
+
+En AES, ces valeurs dépendent de la clé. Le temps d'exécution peut donc varier selon la clé et laisser fuir de l'information exploitable par une attaque temporelle.
+
+Ce choix est volontaire : les branches rendent le code fidèle à la description de la FIPS-197 et facile à suivre.
+Pour la phase de durcissement, chaque branche se remplace par un masque, sans changer le résultat. Par exemple :
+
+```c
+/* xtime : masque = 0xff si le bit x^7 est à 1, 0x00 sinon */
+shifted ^= AES_REDUCTION_POLYNOMIAL & -(uint8_t)(byte >> 7);
+
+/* gmul : masque = 0xff si le bit est à 1, 0x00 sinon */
+product ^= a_times_x_power & -(uint8_t)bit_is_set;
+```
+
+Les tests unitaires existants permettront de vérifier que la version durcie donne les mêmes résultats.
+Il faudra aussi vérifier le code machine produit : un compilateur peut réintroduire une branche.
+
+Les opérations à venir seront ajoutées à ce tableau si elles introduisent de nouvelles dépendances aux données (par exemple une S-box sous forme de table, dont les accès mémoire dépendent de l'octet lu).
 
 ## Vecteurs utilisés (FIPS-197, annexe B)
 

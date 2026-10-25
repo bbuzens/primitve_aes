@@ -1,3 +1,5 @@
+#include <stdbool.h>
+
 #include "xtime.h"
 
 uint8_t xtime(uint8_t byte)

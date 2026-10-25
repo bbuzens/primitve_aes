@@ -1,6 +1,7 @@
 #ifndef TEST_UTILS_H
 #define TEST_UTILS_H
 
+#include <stdbool.h>
 #include <stddef.h>
 
 #include "aes_config.h"

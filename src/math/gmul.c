@@ -1,3 +1,5 @@
+#include <stdbool.h>
+
 #include "gmul.h"
 #include "xtime.h"
 
