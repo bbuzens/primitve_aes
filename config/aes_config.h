@@ -1,0 +1,32 @@
+#ifndef AES_CONFIG_H
+#define AES_CONFIG_H
+
+#include <stdint.h>
+
+/*
+ * L'état AES est une matrice de 4 lignes x 4 colonnes d'octets,
+ * indexée state[ligne][colonne], comme s[r][c] dans la FIPS-197 (§3.4).
+ *
+ * Un bloc de 16 octets remplit l'état colonne par colonne :
+ *
+ *     in[0]  in[4]  in[8]  in[12]
+ *     in[1]  in[5]  in[9]  in[13]
+ *     in[2]  in[6]  in[10] in[14]
+ *     in[3]  in[7]  in[11] in[15]
+ *
+ * Les clés de tour utilisent la même disposition que l'état.
+ */
+
+#define AES_ROWS       4
+#define AES_COLUMNS    4
+#define AES_BLOCK_SIZE (AES_ROWS * AES_COLUMNS)
+
+/*
+ * Polynôme irréductible de GF(2^8) choisi par AES (FIPS-197 §4.2) :
+ *     m(x) = x^8 + x^4 + x^3 + x + 1  ->  0x11b
+ * Un octet ne contient que les termes x^7..x^0 : lors d'une réduction, le terme x^8
+ * disparaît de lui-même et il ne reste qu'à ajouter (XOR) les termes bas, 0x1b.
+ */
+#define AES_REDUCTION_POLYNOMIAL 0x1b
+
+#endif
